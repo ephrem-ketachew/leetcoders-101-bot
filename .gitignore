@@ -20,5 +20,7 @@ dist/
 .vscode/
 *.swp
 *.swo
-IMPLMENTATION.md
-PREREQUIREMENTS.md
+
+# Local docs (not published to repo)
+IMPLEMENTATION.md
+PREREQUISITES.md
