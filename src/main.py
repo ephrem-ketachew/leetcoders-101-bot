@@ -8,13 +8,16 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from src.config import load_config
+from src.config import get_env, load_config
 from src.leetcode.client import LeetCodeError, fetch_recent_submissions, fetch_user_profile
-from src.leetcode.models import Submission, format_submission_time, submission_datetime
+from src.leetcode.models import Submission, format_submission_time
 from src.leetcode.problems import ProblemCache
-from src.state.models import EnrichedSubmission, SyncSummary, UserSyncResult
+from src.report.builder import build_daily_report
+from src.report.window import filter_since_timestamp, get_report_cutoff
+from src.state.models import SyncSummary, UserSyncResult
 from src.state.store import StateStoreError, get_state_store
 from src.state.sync import sync_all_users
+from src.telegram.send import TelegramError, send_message
 
 NOT_IMPLEMENTED = "Not implemented yet — see IMPLEMENTATION.md for phase details."
 
@@ -130,26 +133,6 @@ def cmd_cache_problems(args: argparse.Namespace) -> int:
     return 0
 
 
-def _filter_since_report(
-    submissions: list[EnrichedSubmission],
-    last_report_at: str | None,
-    timezone: str,
-) -> list[EnrichedSubmission]:
-    if not last_report_at:
-        return submissions
-
-    cutoff = datetime.fromisoformat(last_report_at)
-    if cutoff.tzinfo is None:
-        cutoff = cutoff.replace(tzinfo=ZoneInfo(timezone))
-
-    filtered: list[EnrichedSubmission] = []
-    for item in submissions:
-        submitted = submission_datetime(item.submission.timestamp, timezone)
-        if submitted > cutoff:
-            filtered.append(item)
-    return filtered
-
-
 def _print_sync_user(
     result: UserSyncResult,
     *,
@@ -167,7 +150,7 @@ def _print_sync_user(
     else:
         submissions = result.new_submissions
         if since_report:
-            submissions = _filter_since_report(submissions, last_report_at, timezone)
+            submissions = filter_since_timestamp(submissions, last_report_at, timezone)
         print(f"  New submissions: {len(submissions)}")
 
     streak_label = "day" if result.current_streak == 1 else "days"
@@ -177,7 +160,7 @@ def _print_sync_user(
     if not result.did_bootstrap:
         submissions = result.new_submissions
         if since_report:
-            submissions = _filter_since_report(submissions, last_report_at, timezone)
+            submissions = filter_since_timestamp(submissions, last_report_at, timezone)
         for item in submissions:
             when = format_submission_time(item.submission.timestamp, timezone)
             print(f"    {when} | {item.submission.title} ({item.difficulty})")
@@ -202,7 +185,7 @@ def _print_sync_summary(summary: SyncSummary, *, since_report: bool, last_report
     total = summary.total_new
     if since_report and last_report_at:
         total = sum(
-            len(_filter_since_report(user.new_submissions, last_report_at, timezone))
+            len(filter_since_timestamp(user.new_submissions, last_report_at, timezone))
             for user in summary.users
         )
     print(f"Total new across team: {total}")
@@ -235,8 +218,37 @@ def cmd_sync(args: argparse.Namespace) -> int:
 
 
 def cmd_report(args: argparse.Namespace) -> int:
-    mode = "send" if args.send else "dry-run"
-    return _stub(f"report ({mode}): {NOT_IMPLEMENTED} (Phase 3)")
+    config = load_config()
+    store = get_state_store(warn_local=False)
+    cache = ProblemCache()
+    cutoff = get_report_cutoff(store=store, config=config)
+
+    try:
+        summary = sync_all_users(
+            config=config,
+            store=store,
+            problem_cache=cache,
+            dry_run=False,
+        )
+        report = build_daily_report(config, summary, cutoff)
+    except (LeetCodeError, StateStoreError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    if args.send:
+        token = get_env("TELEGRAM_BOT_TOKEN", required=True)
+        chat_id = get_env("TELEGRAM_CHAT_ID", required=True)
+        try:
+            send_message(token=str(token), chat_id=str(chat_id), text=report.html)
+            tz = ZoneInfo(config.timezone)
+            store.put_last_report_at(datetime.now(tz=tz).isoformat())
+        except TelegramError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        print("Report sent to Telegram.")
+    else:
+        print(report.plain_text)
+    return 0
 
 
 def cmd_daily(args: argparse.Namespace) -> int:
@@ -297,15 +309,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     report_parser = subparsers.add_parser("report", help="Generate and optionally send report")
     report_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        default=True,
-        help="Print report to stdout (default)",
-    )
-    report_parser.add_argument(
         "--send",
         action="store_true",
-        help="Send report to Telegram group",
+        help="Send report to Telegram group (default: print to stdout)",
     )
     report_parser.set_defaults(func=cmd_report)
 

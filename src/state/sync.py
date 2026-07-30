@@ -105,6 +105,8 @@ def sync_user(
     submissions = fetch_recent_submissions(username, limit=20)
     state = store.get_user_state(username) or _empty_user_state(username)
     state.username = username
+    pre_sync_last_active_date = state.last_active_date
+    pre_sync_last_active_date = state.last_active_date
 
     known = set(state.seen_submission_ids)
     new_raw = [submission for submission in submissions if submission.id not in known]
@@ -140,6 +142,7 @@ def sync_user(
         seeded_count=seeded_count,
         current_streak=state.current_streak,
         last_active_date=state.last_active_date,
+        pre_sync_last_active_date=pre_sync_last_active_date,
     )
 
 

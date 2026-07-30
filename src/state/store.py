@@ -41,6 +41,8 @@ class StateStore(Protocol):
 
     def get_last_report_at(self) -> str | None: ...
 
+    def put_last_report_at(self, iso: str) -> None: ...
+
 
 def _key_to_filename(key: str) -> str:
     safe = key.replace("/", "__")
@@ -97,6 +99,9 @@ class LocalStateStore:
         value = raw.get("reported_at")
         return str(value) if value else None
 
+    def put_last_report_at(self, iso: str) -> None:
+        self.put_json(LAST_REPORT_KEY, {"reported_at": iso})
+
 
 class CloudflareKVStore:
     def __init__(self, account_id: str, namespace_id: str, api_token: str) -> None:
@@ -119,24 +124,32 @@ class CloudflareKVStore:
         return {"Authorization": f"Bearer {self.api_token}"}
 
     def get_raw(self, key: str) -> bytes | None:
-        with httpx.Client(timeout=15.0) as client:
-            response = client.get(self._url(key), headers=self._headers())
-            if response.status_code == 404:
-                return None
-            if response.status_code >= 400:
-                raise StateStoreError(
-                    f"KV read failed for {key}: HTTP {response.status_code} {response.text}"
-                )
-            return response.content
+        try:
+            with httpx.Client(timeout=15.0) as client:
+                response = client.get(self._url(key), headers=self._headers())
+        except httpx.HTTPError as exc:
+            raise StateStoreError(f"KV read failed for {key}: {exc}") from exc
+
+        if response.status_code == 404:
+            return None
+        if response.status_code >= 400:
+            raise StateStoreError(
+                f"KV read failed for {key}: HTTP {response.status_code} {response.text}"
+            )
+        return response.content
 
     def put_raw(self, key: str, data: bytes, *, content_type: str = "application/json") -> None:
         headers = {**self._headers(), "Content-Type": content_type}
-        with httpx.Client(timeout=15.0) as client:
-            response = client.put(self._url(key), headers=headers, content=data)
-            if response.status_code >= 400:
-                raise StateStoreError(
-                    f"KV write failed for {key}: HTTP {response.status_code} {response.text}"
-                )
+        try:
+            with httpx.Client(timeout=15.0) as client:
+                response = client.put(self._url(key), headers=headers, content=data)
+        except httpx.HTTPError as exc:
+            raise StateStoreError(f"KV write failed for {key}: {exc}") from exc
+
+        if response.status_code >= 400:
+            raise StateStoreError(
+                f"KV write failed for {key}: HTTP {response.status_code} {response.text}"
+            )
 
     def get_json(self, key: str) -> dict[str, Any] | list[Any] | None:
         raw = self.get_raw(key)
@@ -174,6 +187,9 @@ class CloudflareKVStore:
             return None
         value = raw.get("reported_at")
         return str(value) if value else None
+
+    def put_last_report_at(self, iso: str) -> None:
+        self.put_json(LAST_REPORT_KEY, {"reported_at": iso})
 
 
 def get_state_store(*, warn_local: bool = True) -> StateStore:

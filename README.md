@@ -46,7 +46,7 @@ flowchart TB
 | 0 | Project scaffold, config, docs | Done |
 | 1 | LeetCode GraphQL client + problem cache | Done |
 | 2 | Cloudflare KV state + incremental sync | Done |
-| 3 | Report builder + Telegram sender | Pending |
+| 3 | Report builder + Telegram sender | Done |
 | 4 | GitHub Actions daily cron | Pending |
 | 5 | Cloudflare Worker on-demand commands | Pending |
 | 6 | Retries, error handling, polish | Pending |
@@ -129,6 +129,24 @@ python -m src.main sync --since-report
 ```
 
 **Note:** Without `CF_ACCOUNT_ID`, `CF_KV_NAMESPACE_ID`, and `CF_API_TOKEN` in `.env`, state is stored locally under `data/state/`. Add those variables to use Cloudflare KV instead.
+
+---
+
+## Phase 3 usage (report + Telegram)
+
+Preview the daily report in your terminal (runs sync first):
+
+```bash
+python -m src.main report
+```
+
+Send the report to your Telegram group (requires `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env`):
+
+```bash
+python -m src.main report --send
+```
+
+The report includes per-user solve counts, difficulty breakdown, streaks, and a Highlights section. After a successful `--send`, `last_report_at` is saved so the next report only covers new activity since the last send.
 
 ---
 

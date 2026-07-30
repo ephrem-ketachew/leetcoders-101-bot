@@ -57,6 +57,8 @@ class UserSyncResult:
     seeded_count: int
     current_streak: int
     last_active_date: str | None
+    pre_sync_last_active_date: str | None = None
+    pre_sync_last_active_date: str | None = None
 
 
 @dataclass
