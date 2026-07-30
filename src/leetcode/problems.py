@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from src.config import ROOT_DIR
 from src.leetcode.client import fetch_problem_difficulty, fetch_problemset_page
 from src.leetcode.models import Difficulty
+from src.state.store import PROBLEMS_CACHE_KEY, StateStore
 
 DEFAULT_CACHE_PATH = ROOT_DIR / "data" / "problems_cache.json"
 DEFAULT_TIMEZONE = "Africa/Nairobi"
@@ -29,6 +30,19 @@ class ProblemCache:
     def count(self) -> int:
         return len(self._problems)
 
+    def _to_payload(self) -> dict[str, Any]:
+        return {
+            "updated_at": self._updated_at,
+            "total": self._total,
+            "problems": self._problems,
+        }
+
+    def _from_payload(self, raw: dict[str, Any]) -> None:
+        self._updated_at = raw.get("updated_at")
+        self._total = int(raw.get("total") or 0)
+        problems = raw.get("problems") or {}
+        self._problems = {str(k): v for k, v in problems.items()}
+
     def _load(self) -> None:
         if not self.path.exists():
             return
@@ -36,25 +50,44 @@ class ProblemCache:
         with self.path.open(encoding="utf-8") as f:
             raw: dict[str, Any] = json.load(f)
 
-        self._updated_at = raw.get("updated_at")
-        self._total = int(raw.get("total") or 0)
-        problems = raw.get("problems") or {}
-        self._problems = {str(k): v for k, v in problems.items()}
+        self._from_payload(raw)
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "updated_at": self._updated_at,
-            "total": self._total,
-            "problems": self._problems,
-        }
         with self.path.open("w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, sort_keys=True)
+            json.dump(self._to_payload(), f, indent=2, sort_keys=True)
 
-    def ensure_loaded(self, *, min_count: int = 100, page_size: int = 100, delay: float = 0.3) -> None:
+    def load_from_store(self, store: StateStore, *, min_count: int = 100) -> bool:
+        raw = store.get_json(PROBLEMS_CACHE_KEY)
+        if not raw or not isinstance(raw, dict):
+            return False
+
+        self._from_payload(raw)
+        return self.count >= min_count
+
+    def save_to_store(self, store: StateStore) -> None:
+        if not self._problems:
+            return
+        store.put_json(PROBLEMS_CACHE_KEY, self._to_payload())
+
+    def ensure_loaded(
+        self,
+        *,
+        store: StateStore | None = None,
+        min_count: int = 100,
+        page_size: int = 100,
+        delay: float = 0.3,
+    ) -> None:
         if self.count >= min_count:
             return
+
+        if store and self.load_from_store(store, min_count=min_count):
+            return
+
         self.refresh(page_size=page_size, delay=delay)
+
+        if store:
+            self.save_to_store(store)
 
     def refresh(self, *, page_size: int = 100, delay: float = 0.3) -> int:
         skip = 0

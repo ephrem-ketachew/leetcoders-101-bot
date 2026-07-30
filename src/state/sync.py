@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from src.config import AppConfig
 from src.leetcode.client import LeetCodeError, fetch_recent_submissions, fetch_user_profile
 from src.leetcode.models import Submission, submission_datetime
-from src.leetcode.problems import DEFAULT_CACHE_PATH, ProblemCache
+from src.leetcode.problems import ProblemCache
 from src.state.models import (
     MAX_SEEN_SUBMISSION_IDS,
     EnrichedSubmission,
@@ -17,7 +16,7 @@ from src.state.models import (
     UserState,
     UserSyncResult,
 )
-from src.state.store import CloudflareKVStore, PROBLEMS_CACHE_KEY, StateStore, StateStoreError
+from src.state.store import StateStore, StateStoreError
 
 
 def _empty_user_state(username: str) -> UserState:
@@ -106,7 +105,6 @@ def sync_user(
     state = store.get_user_state(username) or _empty_user_state(username)
     state.username = username
     pre_sync_last_active_date = state.last_active_date
-    pre_sync_last_active_date = state.last_active_date
 
     known = set(state.seen_submission_ids)
     new_raw = [submission for submission in submissions if submission.id not in known]
@@ -147,20 +145,10 @@ def sync_user(
 
 
 def _maybe_push_problem_cache(store: StateStore, problem_cache: ProblemCache) -> None:
-    if not isinstance(store, CloudflareKVStore):
-        return
-    if not DEFAULT_CACHE_PATH.exists():
-        return
-
-    with DEFAULT_CACHE_PATH.open(encoding="utf-8") as f:
-        local_payload = json.load(f)
-
-    local_count = len(local_payload.get("problems") or {})
-    remote_payload = store.get_json(PROBLEMS_CACHE_KEY)
-    remote_count = len((remote_payload or {}).get("problems") or {}) if isinstance(remote_payload, dict) else 0
-
-    if local_count > remote_count:
-        store.put_json(PROBLEMS_CACHE_KEY, local_payload)
+    try:
+        problem_cache.save_to_store(store)
+    except StateStoreError:
+        pass
 
 
 def sync_all_users(
@@ -173,7 +161,7 @@ def sync_all_users(
     tz = ZoneInfo(config.timezone)
     synced_at = datetime.now(tz=tz).strftime("%Y-%m-%d %H:%M %Z")
 
-    problem_cache.ensure_loaded()
+    problem_cache.ensure_loaded(store=store)
     results: list[UserSyncResult] = []
 
     for user in config.users:

@@ -47,7 +47,7 @@ flowchart TB
 | 1 | LeetCode GraphQL client + problem cache | Done |
 | 2 | Cloudflare KV state + incremental sync | Done |
 | 3 | Report builder + Telegram sender | Done |
-| 4 | GitHub Actions daily cron | Pending |
+| 4 | GitHub Actions daily cron | Done |
 | 5 | Cloudflare Worker on-demand commands | Pending |
 | 6 | Retries, error handling, polish | Pending |
 
@@ -147,6 +147,48 @@ python -m src.main report --send
 ```
 
 The report includes per-user solve counts, difficulty breakdown, streaks, and a Highlights section. After a successful `--send`, `last_report_at` is saved so the next report only covers new activity since the last send.
+
+---
+
+## Phase 4 usage (GitHub Actions)
+
+The bot posts automatically every day at **3:00 AM East Africa Time** (GitHub cron: `0 0 * * *` UTC).
+
+### One-time: add GitHub secrets
+
+In your repo go to **Settings → Secrets and variables → Actions** and add:
+
+| Secret | Description |
+|--------|-------------|
+| `TELEGRAM_BOT_TOKEN` | From BotFather |
+| `TELEGRAM_CHAT_ID` | Group chat ID |
+| `CF_ACCOUNT_ID` | Cloudflare account ID |
+| `CF_KV_NAMESPACE_ID` | KV namespace for bot state |
+| `CF_API_TOKEN` | Token with Workers KV Storage Edit |
+
+### Manual test (before waiting for cron)
+
+1. Push this repo to `main`
+2. Open **Actions → Daily LeetCode Report → Run workflow**
+
+### Local equivalent
+
+```bash
+python -m src.main daily --send
+```
+
+Same pipeline as the GitHub Action: sync, build report, send to Telegram.
+
+### Workflows
+
+| Workflow | Schedule | Purpose |
+|----------|----------|---------|
+| `daily-report.yml` | Daily 00:00 UTC | Sync + report + Telegram |
+| `refresh-problem-cache.yml` | Sunday 02:00 UTC | Refresh LeetCode problem cache in KV |
+
+If the daily workflow fails, a short alert is sent to your Telegram group.
+
+**Note:** Ensure KV has a problem cache before the first GHA run (`python -m src.main cache-problems --force` locally, which uploads to KV).
 
 ---
 

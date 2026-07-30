@@ -114,16 +114,25 @@ def cmd_fetch(args: argparse.Namespace) -> int:
 
 def cmd_cache_problems(args: argparse.Namespace) -> int:
     cache = ProblemCache()
+    store = get_state_store(warn_local=False)
+
     if cache.count >= 100 and not args.force:
         print(f"Cache already loaded: {cache.count} problems at {cache.path}")
         print("Use --force to refresh.")
         return 0
 
+    if not args.force:
+        cache.ensure_loaded(store=store)
+        if cache.count >= 100:
+            print(f"Cache already loaded: {cache.count} problems")
+            return 0
+
     print("Downloading LeetCode problem list...")
     start = time.perf_counter()
     try:
         count = cache.refresh()
-    except LeetCodeError as exc:
+        cache.save_to_store(store)
+    except (LeetCodeError, StateStoreError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
@@ -217,7 +226,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_report(args: argparse.Namespace) -> int:
+def _run_report(*, send: bool) -> int:
     config = load_config()
     store = get_state_store(warn_local=False)
     cache = ProblemCache()
@@ -235,7 +244,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
-    if args.send:
+    if send:
         token = get_env("TELEGRAM_BOT_TOKEN", required=True)
         chat_id = get_env("TELEGRAM_CHAT_ID", required=True)
         try:
@@ -251,9 +260,18 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_report(args: argparse.Namespace) -> int:
+    return _run_report(send=args.send)
+
+
 def cmd_daily(args: argparse.Namespace) -> int:
-    mode = "send" if args.send else "dry-run"
-    return _stub(f"daily ({mode}): {NOT_IMPLEMENTED} (Phase 4)")
+    if not args.send:
+        print(
+            "Error: daily requires --send (use 'report' for stdout preview).",
+            file=sys.stderr,
+        )
+        return 1
+    return _run_report(send=True)
 
 
 def cmd_config(_args: argparse.Namespace) -> int:
