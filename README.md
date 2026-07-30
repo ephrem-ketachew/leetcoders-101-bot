@@ -36,24 +36,6 @@ flowchart TB
   OnDemandJob --> Report
   Report --> Send["Telegram sendMessage"]
 ```
-
----
-
-## Phase status
-
-| Phase | Description | Status |
-|-------|-------------|--------|
-| 0 | Project scaffold, config, docs | Done |
-| 1 | LeetCode GraphQL client + problem cache | Pending |
-| 2 | Cloudflare KV state + incremental sync | Pending |
-| 3 | Report builder + Telegram sender | Pending |
-| 4 | GitHub Actions daily cron | Pending |
-| 5 | Cloudflare Worker on-demand commands | Pending |
-| 6 | Retries, error handling, polish | Pending |
-| 7 | Quote of the Day, weekly summary (v2) | Backlog |
-
-See [IMPLEMENTATION.md](IMPLEMENTATION.md) for full phase details.
-
 ---
 
 ## Local setup
@@ -86,12 +68,6 @@ python -m src.main --help
 | `python -m src.main sync [--dry-run]` | 2 | Sync state from LeetCode |
 | `python -m src.main report [--send]` | 3 | Generate and optionally send report |
 | `python -m src.main daily [--send]` | 4 | Full daily pipeline |
-
----
-
-## Credentials
-
-All tokens and setup steps: [PREREQUISITES.md](PREREQUISITES.md)
 
 ---
 
