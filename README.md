@@ -36,24 +36,6 @@ flowchart TB
   OnDemandJob --> Report
   Report --> Send["Telegram sendMessage"]
 ```
-
----
-
-## Phase status
-
-| Phase | Description | Status |
-|-------|-------------|--------|
-| 0 | Project scaffold, config, docs | Done |
-| 1 | LeetCode GraphQL client + problem cache | Pending |
-| 2 | Cloudflare KV state + incremental sync | Pending |
-| 3 | Report builder + Telegram sender | Pending |
-| 4 | GitHub Actions daily cron | Pending |
-| 5 | Cloudflare Worker on-demand commands | Pending |
-| 6 | Retries, error handling, polish | Pending |
-| 7 | Quote of the Day, weekly summary (v2) | Backlog |
-
-See [IMPLEMENTATION.md](IMPLEMENTATION.md) for full phase details.
-
 ---
 
 ## Local setup
@@ -88,26 +70,3 @@ python -m src.main --help
 | `python -m src.main daily [--send]` | 4 | Full daily pipeline |
 
 ---
-
-## Credentials
-
-All tokens and setup steps: [PREREQUISITES.md](PREREQUISITES.md)
-
----
-
-## Project structure
-
-```
-leetcoders-101-bot/
-├── config/users.yaml          # Team LeetCode usernames and Telegram handles
-├── src/
-│   ├── main.py                # CLI entry point
-│   ├── config.py              # Config loader
-│   ├── leetcode/              # Phase 1
-│   ├── state/                 # Phase 2
-│   ├── report/                # Phase 3
-│   └── telegram/              # Phase 3
-├── worker/                    # Phase 5 — Cloudflare Worker
-├── scripts/                   # Setup helpers
-└── .github/workflows/         # Phase 4 — GitHub Actions
-```
