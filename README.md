@@ -36,6 +36,21 @@ flowchart TB
   OnDemandJob --> Report
   Report --> Send["Telegram sendMessage"]
 ```
+
+---
+
+## Phase status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 0 | Project scaffold, config, docs | Done |
+| 1 | LeetCode GraphQL client + problem cache | Done |
+| 2 | Cloudflare KV state + incremental sync | Pending |
+| 3 | Report builder + Telegram sender | Pending |
+| 4 | GitHub Actions daily cron | Pending |
+| 5 | Cloudflare Worker on-demand commands | Pending |
+| 6 | Retries, error handling, polish | Pending |
+
 ---
 
 ## Local setup
@@ -47,7 +62,7 @@ python -m venv .venv
 .venv\Scripts\activate
 
 pip install -r requirements.txt
-cp .env.example .env   # fill in as you reach each phase
+copy .env.example .env   # fill in as you reach each phase
 ```
 
 Verify configuration:
@@ -59,12 +74,42 @@ python -m src.main --help
 
 ---
 
+## Phase 1 usage (LeetCode fetch)
+
+Build the local problem difficulty cache (first run, ~10-15 seconds):
+
+```bash
+python -m src.main cache-problems
+```
+
+Fetch recent submissions for one user:
+
+```bash
+python -m src.main fetch --user ephrem-ketachew
+```
+
+Fetch all teammates from `config/users.yaml`:
+
+```bash
+python -m src.main fetch --all
+```
+
+Refresh the cache manually:
+
+```bash
+python -m src.main cache-problems --force
+```
+
+---
+
 ## CLI commands
 
 | Command | Phase | Description |
 |---------|-------|-------------|
 | `python -m src.main config` | 0 | Show loaded users and schedule |
+| `python -m src.main cache-problems [--force]` | 1 | Download/refresh problem difficulty cache |
 | `python -m src.main fetch --user USERNAME` | 1 | Fetch recent LeetCode submissions |
+| `python -m src.main fetch --all` | 1 | Fetch submissions for all configured users |
 | `python -m src.main sync [--dry-run]` | 2 | Sync state from LeetCode |
 | `python -m src.main report [--send]` | 3 | Generate and optionally send report |
 | `python -m src.main daily [--send]` | 4 | Full daily pipeline |
