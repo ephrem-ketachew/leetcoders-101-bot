@@ -1,0 +1,16 @@
+users:
+  - username: your_leetcode_username
+    display_name: Display Name
+    telegram_handle: telegram_username
+  - username: friend2_username
+    display_name: Friend Two
+    telegram_handle: friend2_tg
+  - username: friend3_username
+    display_name: Friend Three
+    telegram_handle: friend3_tg
+  - username: friend4_username
+    display_name: Friend Four
+    telegram_handle: friend4_tg
+
+timezone: Africa/Nairobi
+report_time: "03:00"

@@ -1,0 +1,16 @@
+users:
+  - username: ephrem-ketachew
+    display_name: Ephrem
+    telegram_handle: GameOver5
+  - username: Enoch90s
+    display_name: Henok
+    telegram_handle: Enoch90s
+  - username: DivineToad
+    display_name: Gelila
+    telegram_handle: uly_blue
+  - username: BisratT
+    display_name: Bisrat
+    telegram_handle: b_isry
+
+timezone: Africa/Nairobi
+report_time: "03:00"
