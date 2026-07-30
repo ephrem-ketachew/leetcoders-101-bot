@@ -45,7 +45,7 @@ flowchart TB
 |-------|-------------|--------|
 | 0 | Project scaffold, config, docs | Done |
 | 1 | LeetCode GraphQL client + problem cache | Done |
-| 2 | Cloudflare KV state + incremental sync | Pending |
+| 2 | Cloudflare KV state + incremental sync | Done |
 | 3 | Report builder + Telegram sender | Pending |
 | 4 | GitHub Actions daily cron | Pending |
 | 5 | Cloudflare Worker on-demand commands | Pending |
@@ -99,6 +99,36 @@ Refresh the cache manually:
 ```bash
 python -m src.main cache-problems --force
 ```
+
+---
+
+## Phase 2 usage (state sync)
+
+Preview sync without writing state (first run bootstraps in memory only):
+
+```bash
+python -m src.main sync --dry-run
+```
+
+Run sync and persist state (uses local `data/state/` when Cloudflare creds are absent):
+
+```bash
+python -m src.main sync
+```
+
+Confirm no new submissions after bootstrap:
+
+```bash
+python -m src.main sync --dry-run
+```
+
+Optional: only show submissions since the last daily report (once Phase 4 sets `last_report_at`):
+
+```bash
+python -m src.main sync --since-report
+```
+
+**Note:** Without `CF_ACCOUNT_ID`, `CF_KV_NAMESPACE_ID`, and `CF_API_TOKEN` in `.env`, state is stored locally under `data/state/`. Add those variables to use Cloudflare KV instead.
 
 ---
 

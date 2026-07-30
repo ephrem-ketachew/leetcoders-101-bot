@@ -5,11 +5,16 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from src.config import load_config
 from src.leetcode.client import LeetCodeError, fetch_recent_submissions, fetch_user_profile
-from src.leetcode.models import Submission, format_submission_time
+from src.leetcode.models import Submission, format_submission_time, submission_datetime
 from src.leetcode.problems import ProblemCache
+from src.state.models import EnrichedSubmission, SyncSummary, UserSyncResult
+from src.state.store import StateStoreError, get_state_store
+from src.state.sync import sync_all_users
 
 NOT_IMPLEMENTED = "Not implemented yet — see IMPLEMENTATION.md for phase details."
 
@@ -125,9 +130,108 @@ def cmd_cache_problems(args: argparse.Namespace) -> int:
     return 0
 
 
+def _filter_since_report(
+    submissions: list[EnrichedSubmission],
+    last_report_at: str | None,
+    timezone: str,
+) -> list[EnrichedSubmission]:
+    if not last_report_at:
+        return submissions
+
+    cutoff = datetime.fromisoformat(last_report_at)
+    if cutoff.tzinfo is None:
+        cutoff = cutoff.replace(tzinfo=ZoneInfo(timezone))
+
+    filtered: list[EnrichedSubmission] = []
+    for item in submissions:
+        submitted = submission_datetime(item.submission.timestamp, timezone)
+        if submitted > cutoff:
+            filtered.append(item)
+    return filtered
+
+
+def _print_sync_user(
+    result: UserSyncResult,
+    *,
+    timezone: str,
+    since_report: bool,
+    last_report_at: str | None,
+) -> None:
+    print(f"{result.display_name} ({result.username})")
+
+    if result.did_bootstrap:
+        print(
+            f"  Bootstrap: seeded {result.seeded_count} seen submissions "
+            f"(0 counted as new)"
+        )
+    else:
+        submissions = result.new_submissions
+        if since_report:
+            submissions = _filter_since_report(submissions, last_report_at, timezone)
+        print(f"  New submissions: {len(submissions)}")
+
+    streak_label = "day" if result.current_streak == 1 else "days"
+    active = result.last_active_date or "never"
+    print(f"  Streak: {result.current_streak} {streak_label} (last active: {active})")
+
+    if not result.did_bootstrap:
+        submissions = result.new_submissions
+        if since_report:
+            submissions = _filter_since_report(submissions, last_report_at, timezone)
+        for item in submissions:
+            when = format_submission_time(item.submission.timestamp, timezone)
+            print(f"    {when} | {item.submission.title} ({item.difficulty})")
+
+    print()
+
+
+def _print_sync_summary(summary: SyncSummary, *, since_report: bool, last_report_at: str | None, timezone: str) -> None:
+    mode = " (dry-run)" if summary.dry_run else ""
+    print(f"Sync summary - {summary.synced_at}{mode}")
+    print(f"Store: {summary.store_label}")
+    print()
+
+    for result in summary.users:
+        _print_sync_user(
+            result,
+            timezone=timezone,
+            since_report=since_report,
+            last_report_at=last_report_at,
+        )
+
+    total = summary.total_new
+    if since_report and last_report_at:
+        total = sum(
+            len(_filter_since_report(user.new_submissions, last_report_at, timezone))
+            for user in summary.users
+        )
+    print(f"Total new across team: {total}")
+
+
 def cmd_sync(args: argparse.Namespace) -> int:
-    dry = " (dry-run)" if args.dry_run else ""
-    return _stub(f"sync{dry}: {NOT_IMPLEMENTED} (Phase 2)")
+    config = load_config()
+    store = get_state_store()
+    cache = ProblemCache()
+    last_report_at = store.get_last_report_at() if args.since_report else None
+
+    try:
+        summary = sync_all_users(
+            config=config,
+            store=store,
+            problem_cache=cache,
+            dry_run=args.dry_run,
+        )
+    except (LeetCodeError, StateStoreError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    _print_sync_summary(
+        summary,
+        since_report=args.since_report,
+        last_report_at=last_report_at,
+        timezone=config.timezone,
+    )
+    return 0
 
 
 def cmd_report(args: argparse.Namespace) -> int:
@@ -183,6 +287,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Compute changes without writing state",
+    )
+    sync_parser.add_argument(
+        "--since-report",
+        action="store_true",
+        help="Only show new submissions after last_report_at",
     )
     sync_parser.set_defaults(func=cmd_sync)
 
