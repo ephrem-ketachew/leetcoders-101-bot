@@ -70,20 +70,3 @@ python -m src.main --help
 | `python -m src.main daily [--send]` | 4 | Full daily pipeline |
 
 ---
-
-## Project structure
-
-```
-leetcoders-101-bot/
-├── config/users.yaml          # Team LeetCode usernames and Telegram handles
-├── src/
-│   ├── main.py                # CLI entry point
-│   ├── config.py              # Config loader
-│   ├── leetcode/              # Phase 1
-│   ├── state/                 # Phase 2
-│   ├── report/                # Phase 3
-│   └── telegram/              # Phase 3
-├── worker/                    # Phase 5 — Cloudflare Worker
-├── scripts/                   # Setup helpers
-└── .github/workflows/         # Phase 4 — GitHub Actions
-```
