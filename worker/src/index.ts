@@ -4,6 +4,12 @@ export interface Env {
   GITHUB_REPO: string;
   TELEGRAM_WEBHOOK_SECRET: string;
   TELEGRAM_CHAT_ID?: string;
+  COMMANDS_ENABLED?: string;
+}
+
+function commandsEnabled(env: Env): boolean {
+  const value = env.COMMANDS_ENABLED?.trim().toLowerCase();
+  return value === "true" || value === "1";
 }
 
 interface TelegramMessage {
@@ -79,7 +85,8 @@ async function dispatchGitHub(env: Env, eventType: string): Promise<void> {
 
   if (response.status !== 204) {
     const body = await response.text();
-    throw new Error(`GitHub dispatch failed: ${response.status} ${body}`);
+    console.error(`GitHub dispatch failed: ${response.status} ${body}`);
+    throw new Error(`GitHub dispatch failed: ${response.status}`);
   }
 }
 
@@ -112,6 +119,11 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
 
   const command = parseCommand(message.text);
   if (!command) {
+    return new Response("OK");
+  }
+
+  if (!commandsEnabled(env)) {
+    console.log(`Ignored disabled command: ${command}`);
     return new Response("OK");
   }
 
