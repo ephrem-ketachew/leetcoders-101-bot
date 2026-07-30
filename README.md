@@ -9,7 +9,7 @@ Automated Telegram bot that tracks daily LeetCode progress for a group of friend
 
 ## What it does
 
-Every day the bot fetches recent accepted submissions from LeetCode for each tracked user, counts new solves since the last run, breaks them down by difficulty, updates streaks, and posts a formatted report to your Telegram group. On-demand commands (`/today`, `/stats`) trigger the same pipeline via a Cloudflare Worker webhook.
+Every day the bot fetches recent accepted submissions from LeetCode for each tracked user, counts new solves since the last run, breaks them down by difficulty, updates streaks, and posts a formatted report to your Telegram group at **3:00 AM EAT**. On-demand Telegram commands (`/today`, `/stats`, `/help`) exist in code but are **disabled by default** so manual runs cannot shift the daily report window.
 
 ---
 
@@ -195,23 +195,27 @@ If the daily workflow fails, a short alert is sent to your Telegram group.
 
 ## Phase 5 usage (on-demand Telegram commands)
 
-Telegram commands in your group chat:
+**Telegram commands are disabled by default** (`COMMANDS_ENABLED = "false"` in `worker/wrangler.toml`). The bot only posts via the 3:00 AM cron. This prevents `/today` from resetting the report window mid-day.
 
-| Command | Behavior |
-|---------|----------|
+Commands still exist in code for local/GHA use; the Worker silently ignores them in the group chat.
+
+| Command | Behavior (when enabled) |
+|---------|-------------------------|
 | `/today` | Worker ack → GHA runs full sync + daily report → Telegram |
 | `/stats` | Worker ack → GHA reads KV streaks only (no LeetCode fetch) → Telegram |
 | `/help` | Instant reply from Worker (no GHA) |
 
-`/today` and `/stats` take ~30–90 seconds (GHA queue + Python run). The Worker replies immediately with a short ack message.
+To re-enable on-demand commands, set `COMMANDS_ENABLED = "true"` in `worker/wrangler.toml` and run `npx wrangler deploy`.
 
 ### One-time: GitHub fine-grained PAT
 
 Create at **GitHub → Settings → Developer settings → Fine-grained tokens**:
 
 - Repository: `ephrem-ketachew/leetcoders-101-bot` only
-- Permissions: **Actions: Read and write**, **Metadata: Read**
+- Permissions: **Contents: Read and write**, **Metadata: Read**
 - Store as Worker secret `GITHUB_PAT` (never commit)
+
+> **Important:** `repository_dispatch` requires **Contents: Read and write**, not just Actions. Without it, `/today` and `/stats` will fail with "Something went wrong."
 
 ### Deploy Cloudflare Worker
 

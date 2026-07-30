@@ -13,7 +13,7 @@ from src.state.models import SyncSummary
 from src.telegram.send import escape_html
 
 MAX_LISTED_PROBLEMS = 5
-CLOSING_LINE = "See you tomorrow at 3:00 AM EAT."
+CLOSING_LINE = "Next report: 3:00 AM EAT."
 
 
 def _counts_from_submissions(submissions) -> DifficultyCounts:
@@ -58,55 +58,101 @@ def _build_user_sections(
     return sections
 
 
-def _format_user_plain(section: UserReportSection) -> list[str]:
-    lines = [
-        f"{section.display_name} (@{section.telegram_handle}) - {section.username}",
-        (
-            f"  Total: {section.counts.total}  |  "
-            f"Easy: {section.counts.easy}  Medium: {section.counts.medium}  "
-            f"Hard: {section.counts.hard}"
-        ),
-        f"  Streak: {_streak_label(section.current_streak)}",
-    ]
+MAX_LISTED_PROBLEMS = 5
+CLOSING_LINE = "Next report: 3:00 AM EAT."
 
-    if not section.submissions:
-        return lines
+_DIFFICULTY_EMOJI = {
+    "Easy": "🟢",
+    "Medium": "🟡",
+    "Hard": "🔴",
+}
 
-    shown = section.submissions[:MAX_LISTED_PROBLEMS]
-    for item in shown:
-        lines.append(f"  - {item.submission.title} ({item.difficulty})")
+_RANK_MEDALS = ("🥇", "🥈", "🥉")
 
-    remaining = len(section.submissions) - len(shown)
-    if remaining > 0:
-        lines.append(f"  ... and {remaining} more")
+
+def _team_summary(sections: list[UserReportSection]) -> tuple[int, int]:
+    solvers = sum(1 for section in sections if section.counts.total > 0)
+    problems = sum(section.counts.total for section in sections)
+    return solvers, problems
+
+
+def _rank_prefix(index: int, section: UserReportSection) -> str:
+    if section.counts.total <= 0:
+        return "▫️ "
+    if index < len(_RANK_MEDALS):
+        return f"{_RANK_MEDALS[index]} "
+    return "▫️ "
+
+
+def _status_emoji(section: UserReportSection) -> str:
+    return "✅" if section.counts.total > 0 else "❌"
+
+
+def _format_counts_line(counts: DifficultyCounts) -> str:
+    return (
+        f"🟢 {counts.easy}   🟡 {counts.medium}   🔴 {counts.hard}   "
+        f"·   Σ {counts.total}"
+    )
+
+
+def _format_streak_line(streak: int) -> str:
+    if streak <= 0:
+        return "💤 Streak: 0 days"
+    fire = "🔥" if streak >= 3 else "✨"
+    return f"{fire} Streak: {_streak_label(streak)}"
+
+
+def _format_problem_line(item) -> str:
+    emoji = _DIFFICULTY_EMOJI.get(item.difficulty, "•")
+    return f"   {emoji} {item.submission.title}"
+
+
+def _format_user_plain(section: UserReportSection, *, rank_prefix: str) -> list[str]:
+    header = f"{rank_prefix}{_status_emoji(section)} {section.display_name} (@{section.telegram_handle})"
+    lines = [header, f"   leetcode.com/u/{section.username}/"]
+
+    if section.counts.total > 0:
+        lines.append(f"   {_format_counts_line(section.counts)}")
+        lines.append(f"   {_format_streak_line(section.current_streak)}")
+        shown = section.submissions[:MAX_LISTED_PROBLEMS]
+        for item in shown:
+            lines.append(_format_problem_line(item))
+        remaining = len(section.submissions) - len(shown)
+        if remaining > 0:
+            lines.append(f"   … +{remaining} more")
+    else:
+        lines.append("   No solves in this report period")
+        lines.append(f"   {_format_streak_line(section.current_streak)}")
+
     return lines
 
 
-def _format_user_html(section: UserReportSection) -> list[str]:
+def _format_user_html(section: UserReportSection, *, rank_prefix: str) -> list[str]:
     name = escape_html(section.display_name)
     handle = escape_html(section.telegram_handle)
     username = escape_html(section.username)
+    status = _status_emoji(section)
+
     lines = [
-        f"<b>{name}</b> (@{handle}) - <code>{username}</code>",
-        (
-            f"Total: {section.counts.total} | "
-            f"Easy: {section.counts.easy} Medium: {section.counts.medium} "
-            f"Hard: {section.counts.hard}"
-        ),
-        f"Streak: {_streak_label(section.current_streak)}",
+        f"{rank_prefix}<b>{status} {name}</b> (@{handle})",
+        f'<a href="https://leetcode.com/u/{username}/">leetcode.com/u/{username}/</a>',
     ]
 
-    if not section.submissions:
-        return lines
+    if section.counts.total > 0:
+        lines.append(f"<code>{escape_html(_format_counts_line(section.counts))}</code>")
+        lines.append(escape_html(_format_streak_line(section.current_streak)))
+        shown = section.submissions[:MAX_LISTED_PROBLEMS]
+        for item in shown:
+            emoji = _DIFFICULTY_EMOJI.get(item.difficulty, "•")
+            title = escape_html(item.submission.title)
+            lines.append(f"   {emoji} {title}")
+        remaining = len(section.submissions) - len(shown)
+        if remaining > 0:
+            lines.append(f"   … +{remaining} more")
+    else:
+        lines.append("<i>No solves in this report period</i>")
+        lines.append(escape_html(_format_streak_line(section.current_streak)))
 
-    shown = section.submissions[:MAX_LISTED_PROBLEMS]
-    for item in shown:
-        title = escape_html(item.submission.title)
-        lines.append(f"- {title} ({item.difficulty})")
-
-    remaining = len(section.submissions) - len(shown)
-    if remaining > 0:
-        lines.append(f"... and {remaining} more")
     return lines
 
 
@@ -126,26 +172,45 @@ def build_daily_report(
     }
     highlights = build_highlights(sections, pre_sync_last_active=pre_sync_last_active)
 
-    plain_lines = [f"Daily LeetCode Report - {title_date}", ""]
-    html_lines = [f"<b>Daily LeetCode Report</b> - {escape_html(title_date)}", ""]
+    solvers, problems = _team_summary(sections)
+    team_size = len(sections)
+    summary_line = f"Team: {solvers}/{team_size} solved · {problems} problem{'s' if problems != 1 else ''} total"
 
-    for section in sections:
-        plain_lines.extend(_format_user_plain(section))
+    plain_lines = [
+        f"📊 Daily LeetCode Report",
+        title_date,
+        "",
+        summary_line,
+        "─" * 28,
+        "",
+    ]
+    html_lines = [
+        "<b>📊 Daily LeetCode Report</b>",
+        escape_html(title_date),
+        "",
+        f"<i>{escape_html(summary_line)}</i>",
+        "─" * 28,
+        "",
+    ]
+
+    for index, section in enumerate(sections):
+        rank = _rank_prefix(index, section)
+        plain_lines.extend(_format_user_plain(section, rank_prefix=rank))
         plain_lines.append("")
-        html_lines.extend(_format_user_html(section))
+        html_lines.extend(_format_user_html(section, rank_prefix=rank))
         html_lines.append("")
 
     if highlights:
-        plain_lines.append("Highlights")
-        html_lines.append("<b>Highlights</b>")
+        plain_lines.append("✨ Highlights")
+        html_lines.append("<b>✨ Highlights</b>")
         for line in highlights:
-            plain_lines.append(f"- {line}")
-            html_lines.append(f"- {escape_html(line)}")
+            plain_lines.append(f"  • {line}")
+            html_lines.append(f"  • {escape_html(line)}")
         plain_lines.append("")
         html_lines.append("")
 
-    plain_lines.append(CLOSING_LINE)
-    html_lines.append(escape_html(CLOSING_LINE))
+    plain_lines.append(f"⏰ {CLOSING_LINE}")
+    html_lines.append(f"⏰ {escape_html(CLOSING_LINE)}")
 
     return DailyReport(
         title_date=title_date,

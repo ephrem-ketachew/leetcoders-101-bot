@@ -44,6 +44,6 @@ class DailyReport:
     generated_at: str
     users: list[UserReportSection]
     highlights: list[str] = field(default_factory=list)
-    closing_line: str = "See you tomorrow at 3:00 AM EAT."
+    closing_line: str = "Next report: 3:00 AM EAT."
     plain_text: str = ""
     html: str = ""
