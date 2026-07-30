@@ -1,0 +1,6 @@
+name = "leetcoders-101-bot"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+GITHUB_REPO = "ephrem-ketachew/leetcoders-101-bot"

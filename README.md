@@ -48,7 +48,7 @@ flowchart TB
 | 2 | Cloudflare KV state + incremental sync | Done |
 | 3 | Report builder + Telegram sender | Done |
 | 4 | GitHub Actions daily cron | Done |
-| 5 | Cloudflare Worker on-demand commands | Pending |
+| 5 | Cloudflare Worker on-demand commands | Done |
 | 6 | Retries, error handling, polish | Pending |
 
 ---
@@ -185,10 +185,110 @@ Same pipeline as the GitHub Action: sync, build report, send to Telegram.
 |----------|----------|---------|
 | `daily-report.yml` | Daily 00:00 UTC | Sync + report + Telegram |
 | `refresh-problem-cache.yml` | Sunday 02:00 UTC | Refresh LeetCode problem cache in KV |
+| `on-demand-report.yml` | `repository_dispatch` | On-demand `/today` and `/stats` |
 
 If the daily workflow fails, a short alert is sent to your Telegram group.
 
 **Note:** Ensure KV has a problem cache before the first GHA run (`python -m src.main cache-problems --force` locally, which uploads to KV).
+
+---
+
+## Phase 5 usage (on-demand Telegram commands)
+
+Telegram commands in your group chat:
+
+| Command | Behavior |
+|---------|----------|
+| `/today` | Worker ack → GHA runs full sync + daily report → Telegram |
+| `/stats` | Worker ack → GHA reads KV streaks only (no LeetCode fetch) → Telegram |
+| `/help` | Instant reply from Worker (no GHA) |
+
+`/today` and `/stats` take ~30–90 seconds (GHA queue + Python run). The Worker replies immediately with a short ack message.
+
+### One-time: GitHub fine-grained PAT
+
+Create at **GitHub → Settings → Developer settings → Fine-grained tokens**:
+
+- Repository: `ephrem-ketachew/leetcoders-101-bot` only
+- Permissions: **Actions: Read and write**, **Metadata: Read**
+- Store as Worker secret `GITHUB_PAT` (never commit)
+
+### Deploy Cloudflare Worker
+
+Requires Node.js 20+ and a Cloudflare account (`npx wrangler login` once).
+
+```bash
+cd worker
+npm install
+npx wrangler deploy
+```
+
+Note the Worker URL (e.g. `https://leetcoders-101-bot.yourname.workers.dev`).
+
+### Set Worker secrets
+
+```bash
+cd worker
+npx wrangler secret put TELEGRAM_BOT_TOKEN
+npx wrangler secret put GITHUB_PAT
+npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
+npx wrangler secret put TELEGRAM_CHAT_ID   # optional but recommended
+```
+
+`GITHUB_REPO` is set in `worker/wrangler.toml`. Other secrets must not be committed.
+
+Generate a random webhook secret, e.g.:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Use the same value in `.env` as `TELEGRAM_WEBHOOK_SECRET` and when registering the webhook.
+
+### Register Telegram webhook
+
+After deploy, point Telegram at your Worker:
+
+```bash
+# Linux/macOS
+export TELEGRAM_BOT_TOKEN=...
+export TELEGRAM_WEBHOOK_SECRET=...
+export WORKER_URL=https://leetcoders-101-bot.yourname.workers.dev
+bash scripts/set_webhook.sh
+```
+
+```powershell
+# Windows
+$env:TELEGRAM_BOT_TOKEN = "..."
+$env:TELEGRAM_WEBHOOK_SECRET = "..."
+$env:WORKER_URL = "https://leetcoders-101-bot.yourname.workers.dev"
+.\scripts\set_webhook.ps1
+```
+
+Verify:
+
+```bash
+curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
+```
+
+Health check: `GET https://<worker-url>/health` → `OK`
+
+### Local stats (debugging)
+
+KV-only streak summary without LeetCode fetch:
+
+```bash
+python -m src.main stats           # stdout
+python -m src.main stats --send    # post to Telegram
+```
+
+Stats do **not** update `last_report_at`.
+
+### Workflows (on-demand)
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `on-demand-report.yml` | `repository_dispatch` | `/today` → `daily --send`, `/stats` → `stats --send` |
 
 ---
 
@@ -203,5 +303,6 @@ If the daily workflow fails, a short alert is sent to your Telegram group.
 | `python -m src.main sync [--dry-run]` | 2 | Sync state from LeetCode |
 | `python -m src.main report [--send]` | 3 | Generate and optionally send report |
 | `python -m src.main daily [--send]` | 4 | Full daily pipeline |
+| `python -m src.main stats [--send]` | 5 | KV-only streak summary |
 
 ---

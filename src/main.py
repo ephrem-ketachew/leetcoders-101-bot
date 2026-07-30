@@ -13,6 +13,7 @@ from src.leetcode.client import LeetCodeError, fetch_recent_submissions, fetch_u
 from src.leetcode.models import Submission, format_submission_time
 from src.leetcode.problems import ProblemCache
 from src.report.builder import build_daily_report
+from src.report.stats import build_stats_report
 from src.report.window import filter_since_timestamp, get_report_cutoff
 from src.state.models import SyncSummary, UserSyncResult
 from src.state.store import StateStoreError, get_state_store
@@ -260,6 +261,34 @@ def _run_report(*, send: bool) -> int:
     return 0
 
 
+def _run_stats(*, send: bool) -> int:
+    config = load_config()
+    store = get_state_store(warn_local=False)
+
+    try:
+        report = build_stats_report(config, store)
+    except StateStoreError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    if send:
+        token = get_env("TELEGRAM_BOT_TOKEN", required=True)
+        chat_id = get_env("TELEGRAM_CHAT_ID", required=True)
+        try:
+            send_message(token=str(token), chat_id=str(chat_id), text=report.html)
+        except TelegramError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        print("Stats sent to Telegram.")
+    else:
+        print(report.plain_text)
+    return 0
+
+
+def cmd_stats(args: argparse.Namespace) -> int:
+    return _run_stats(send=args.send)
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     return _run_report(send=args.send)
 
@@ -343,6 +372,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Send report to Telegram group",
     )
     daily_parser.set_defaults(func=cmd_daily)
+
+    stats_parser = subparsers.add_parser("stats", help="Show streak stats from saved state")
+    stats_parser.add_argument(
+        "--send",
+        action="store_true",
+        help="Send stats to Telegram group (default: print to stdout)",
+    )
+    stats_parser.set_defaults(func=cmd_stats)
 
     config_parser = subparsers.add_parser("config", help="Show loaded configuration")
     config_parser.set_defaults(func=cmd_config)

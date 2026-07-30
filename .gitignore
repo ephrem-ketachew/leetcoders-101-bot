@@ -7,7 +7,8 @@ __pycache__/
 .Python
 data/
 .wrangler/
-node_modules/
+worker/node_modules/
+worker/.wrangler/
 dist/
 *.egg-info/
 .eggs/
